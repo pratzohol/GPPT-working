@@ -22,6 +22,8 @@ def node_mask(train_mask,mask_rate):
             if count==10:
                 count=0
     return train_mask
+
+
 def my_load_data(args):
     if args.dataset=='cora' or args.dataset=='citeseer' or args.dataset=='pubmed' or args.dataset=='reddit':
         data = load_data(args)
@@ -37,7 +39,8 @@ def my_load_data(args):
         test_mask = g.ndata['test_mask']
         in_feats = features.shape[1]
         n_classes = data.num_classes
-        n_edges = data.graph.number_of_edges()
+        n_edges = g.number_of_edges()
+
     elif args.dataset=='Fraud_yelp' or args.dataset=='Fraud_amazon':
         if args.dataset=='Fraud_yelp':
             data = dgl.data.FraudDataset('yelp')
@@ -57,6 +60,7 @@ def my_load_data(args):
         in_feats = features.shape[1]
         n_classes = data.num_classes
         n_edges = data.graph.number_of_edges()
+
     elif args.dataset=='CoraFull':
         data = dgl.data.CoraFullDataset()
         g = data[0]
@@ -76,6 +80,7 @@ def my_load_data(args):
         in_feats = features.shape[1]
         n_classes = data.num_classes
         n_edges = g.number_of_edges()
+
     elif args.dataset=='AmazonCoBuyComputer' or args.dataset=='AmazonCoBuyPhoto' or args.dataset=='CoauthorCS' :
         if args.dataset=='AmazonCoBuyComputer':
             data = dgl.data.AmazonCoBuyComputerDataset()
@@ -100,9 +105,9 @@ def my_load_data(args):
         in_feats = features.shape[1]
         n_classes = data.num_classes
         n_edges = g.number_of_edges()
+
     elif args.dataset=='ogbn-arxiv':
         dataset = DglNodePropPredDataset(name='ogbn-arxiv')
-        
         split_idx = dataset.get_idx_split()
         g, labels = dataset[0]
         g = dgl.add_reverse_edges(g)
@@ -129,6 +134,7 @@ def my_load_data(args):
         n_edges = g.number_of_edges()
         labels=labels.view(-1,)
         pass
+
     else:
         g=None
         features=None
@@ -141,9 +147,10 @@ def my_load_data(args):
         n_edges=None
     return g,features,labels,train_mask,val_mask,test_mask,in_feats,n_classes,n_edges
 
+
 def evaluate(model, graph, nid, batch_size, device,sample_list):
     sampler = dgl.dataloading.MultiLayerNeighborSampler(sample_list)
-    valid_dataloader = dgl.dataloading.NodeDataLoader(graph, nid.int(), sampler,batch_size=batch_size,shuffle=False,drop_last=False,num_workers=0,device=device)
+    valid_dataloader = dgl.dataloading.DataLoader(graph, nid.int(), sampler,batch_size=batch_size,shuffle=False,drop_last=False,num_workers=0,device=device)
     model.eval()
     predictions = []
     labels = []
@@ -156,7 +163,8 @@ def evaluate(model, graph, nid, batch_size, device,sample_list):
         labels = np.concatenate(labels)
         accuracy = accuracy_score(labels, predictions)
     return accuracy
-    
+
+
 def constraint(device,prompt):
     if isinstance(prompt,list):
         sum=0
@@ -165,7 +173,8 @@ def constraint(device,prompt):
         return sum/len(prompt)
     else:
         return torch.norm(torch.mm(prompt,prompt.T)-torch.eye(prompt.shape[0]).to(device))
-            
+
+
 def seed_torch(seed=1029):
 	random.seed(seed)
 	os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
@@ -175,6 +184,7 @@ def seed_torch(seed=1029):
 	torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
 	torch.backends.cudnn.benchmark = False
 	torch.backends.cudnn.deterministic = True
+
 
 def get_init_info(args):
     g,features,labels,train_mask,val_mask,test_mask,in_feats,n_classes,n_edges=my_load_data(args)
@@ -188,13 +198,13 @@ def get_init_info(args):
            train_mask.int().sum().item(),
            val_mask.int().sum().item(),
            test_mask.int().sum().item()))
-    
+
     if args.gpu < 0:
         device='cpu'
     else:
         device='cuda:'+str(args.gpu)
         torch.cuda.set_device(args.gpu)
-        
+
     features = features.to(device)
     labels = labels.to(device)
     train_mask = train_mask.to(device)
@@ -210,6 +220,8 @@ def get_init_info(args):
     if args.gpu >= 0:
         g = g.int().to(args.gpu)
     return g,features,labels,in_feats,n_classes,n_edges,train_nid,val_nid,test_nid,device
+
+
 if __name__ == '__main__':
     args = get_my_args()
     print(args)

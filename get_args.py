@@ -13,13 +13,16 @@ def get_my_args():
     parser.add_argument('--num-workers', type=int, default=0)
     parser.add_argument('--sample-list', type=list, default=[4,4])
     parser.add_argument("--n-epochs", type=int, default=30,help="number of training epochs")
-    parser.add_argument("--file-id", type=str, default='128')
-    parser.add_argument("--gpu", type=int, default=1,help="gpu")
+    parser.add_argument("--file-id", type=str, default='128GCN')
+    parser.add_argument("--gpu", type=int, default=0,help="gpu")
     parser.add_argument("--lr", type=float, default=2e-3,help="learning rate")
     parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument('--half', type=bool, default=False)
     parser.add_argument('--mask_rate', type=float, default=0)
     parser.add_argument('--center_num', type=int, default=7)
+
+    # dataset -
+    # cora, citeseer, pubmed, reddit, Fraud_yelp, Fraud_amazon, CoraFull, AmazonCoBuyComputer, AmazonCoBuyPhoto, CoauthorCS, ogbn-arxiv
     args = parser.parse_args(args=['--dataset','cora'])
     print(args)
     return args

@@ -13,7 +13,7 @@ import argparse
 from dgl.data import RedditDataset
 from torch.nn.parallel import DistributedDataParallel
 import tqdm
-from dgl.data import load_data#########
+from dgl.data import load_data
 import random
 import os
 import torch
@@ -61,7 +61,7 @@ def evaluate(model, g, nfeat, labels, train_nids, val_nids, test_nids, device):
         else:
             pred = model.module.inference(g, nfeat, device, args.batch_size, args.num_workers)
     model.train()
-    
+
     return compute_acc(pred, labels, train_nids, val_nids, test_nids)
 
 def smc_evaluate(model, g, nfeat, labels, train_nids, val_nids, test_nids, device):
@@ -73,7 +73,7 @@ def smc_evaluate(model, g, nfeat, labels, train_nids, val_nids, test_nids, devic
     val_mask : A 0-1 mask indicating which nodes do we actually compute the accuracy for.
     device : The GPU device to evaluate on.
     """
-    
+
     model.eval()
     with th.no_grad():
         # single gpu
@@ -82,7 +82,7 @@ def smc_evaluate(model, g, nfeat, labels, train_nids, val_nids, test_nids, devic
         # multi gpu
         else:
             pred = model.module.inference(g, nfeat, device, args.batch_size, args.num_workers)
-    
+
     return pred
 
 #### Entry point
@@ -120,26 +120,27 @@ def run(proc_id, n_gpus, args, devices, data):
         g = g.to(device)
 
     # Create sampler
-    sampler = dgl.dataloading.MultiLayerNeighborSampler(
-        [int(fanout) for fanout in args.fan_out.split(',')])
-    dataloader = dgl.dataloading.EdgeDataLoader(
-        g, train_seeds, sampler, exclude='reverse_id',
+    sampler = dgl.dataloading.MultiLayerNeighborSampler([int(fanout) for fanout in args.fan_out.split(',')])
+    sampler = dgl.dataloading.as_edge_prediction_sampler(
+        sampler, exclude='reverse_id',
         # For each edge with ID e in Reddit dataset, the reverse edge is e ± |E|/2.
         reverse_eids=th.cat([
             th.arange(n_edges // 2, n_edges),
             th.arange(0, n_edges // 2)]).to(train_seeds),
         negative_sampler=NegativeSampler(g, args.num_negs, args.neg_share),
+    )
+    dataloader = dgl.dataloading.DataLoader(
+        g, train_seeds, sampler,
         device=device,
         use_ddp=n_gpus > 1,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=False,
-        num_workers=args.num_workers)
+        num_workers=args.num_workers
+    )
 
     # Define model and optimizer
-    #model = SAGE(in_feats, args.num_hidden, args.num_hidden, args.num_layers, F.relu, args.dropout)#
-    model = SAGE(in_feats, args.num_hidden, args.num_hidden, args.num_layers, F.relu, args.dropout, args.aggregator_type)
-    #print(model)
+    model = SAGE(in_feats, args.num_hidden, n_classes, labels, args.num_layers, F.relu, args.dropout, args.aggregator_type)
     model = model.to(device)
     if n_gpus > 1:
         model = DistributedDataParallel(model, device_ids=[device], output_device=device)
@@ -190,10 +191,10 @@ def run(proc_id, n_gpus, args, devices, data):
                 print('[{}]Epoch {:05d} | Step {:05d} | Loss {:.4f} | Speed (samples/sec) {:.4f}|{:.4f} | Load {:.4f}| train {:.4f} | GPU {:.1f} MB'.format(
                     proc_id, epoch, step, loss.item(), np.mean(iter_pos[3:]), np.mean(iter_neg[3:]), np.mean(iter_d[3:]), np.mean(iter_t[3:]), gpu_mem_alloc))
             tic_step = time.time()
-            
+
         ############################333
             if step % args.eval_every == 0 and proc_id == 0:
-                eval_acc, test_acc = evaluate(model, g, nfeat, labels, train_nid, val_nid, test_nid, device)#############################################
+                eval_acc, test_acc = evaluate(model, g, nfeat, labels, train_nid, val_nid, test_nid, device)
                 print('Eval Acc {:.4f} Test Acc {:.4f}'.format(eval_acc, test_acc))
                 if eval_acc > best_eval_acc:
                     best_eval_acc = eval_acc
@@ -201,7 +202,7 @@ def run(proc_id, n_gpus, args, devices, data):
                 print('Best Eval Acc {:.4f} Test Acc {:.4f}'.format(best_eval_acc, best_test_acc))
                 #gc.collect()
                 #torch.cuda.empty_cache()
-        ############################333  
+        ############################333
         toc = time.time()
         if proc_id == 0:
             print('Epoch Time(s): {:.4f}'.format(toc - tic))
@@ -210,8 +211,7 @@ def run(proc_id, n_gpus, args, devices, data):
         if n_gpus > 1:
             th.distributed.barrier()
     ##################################
-    ##################################
-    ##################################
+
     print(model)
     th.save(model.state_dict(), './data_smc/'+args.dataset+'_model_'+args.file_id+'.pt')
     m_state_dict = torch.load('./data_smc/'+args.dataset+'_model_'+args.file_id+'.pt')####
@@ -221,17 +221,13 @@ def run(proc_id, n_gpus, args, devices, data):
     res=pre.detach().clone().cpu().data.numpy()
     res=pd.DataFrame(res)
     res.to_csv('./data_smc/'+args.dataset+'_feat_'+args.file_id+'.csv',header=None,index=None)
-    #print(res.shape)
-    #print("bbbb")
+
     print("##########\n",compute_acc(pre.detach().clone(),labels, train_nid, val_nid, test_nid))
     ####
-    ##################################
-    ##################################
-    ##################################
-    
+
     if proc_id == 0:
         print('Avg epoch time: {}'.format(avg / (epoch - 4)))
-    
+
     return model
 
 def seed_torch(seed=1029):
@@ -243,10 +239,10 @@ def seed_torch(seed=1029):
 	torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
 	torch.backends.cudnn.benchmark = False
 	torch.backends.cudnn.deterministic = True
-    
+
 def main(args, devices):
     seed_torch(args.seed)
-    
+
     g,features,labels,train_mask,val_mask,test_mask,in_feats,n_classes,n_edges=utils.my_load_data(args)
 
     # Create csr/coo/csc formats before launching training processes with multi-gpu.
@@ -276,21 +272,14 @@ if __name__ == '__main__':
     argparser.add_argument("--gpu", type=str, default='0',
                            help="GPU, can be a list of gpus for multi-gpu training,"
                                 " e.g., 0,1,2,3; -1 for CPU")
-    #argparser.add_argument('--dataset', type=str, default='cora')############
-    #argparser.add_argument('--dataset', type=str, default='citeseer')############
-    #argparser.add_argument('--dataset', type=str, default='pubmed')############
-    #argparser.add_argument('--dataset', type=str, default='reddit')############
-    #argparser.add_argument('--dataset', type=str, default='AmazonCoBuyComputer')############
-    #argparser.add_argument('--dataset', type=str, default='CoraFull')############
-    #argparser.add_argument('--dataset', type=str, default='CoraFull')############
 
     argparser.add_argument('--dataset', type=str, default=a.dataset)############
     argparser.add_argument('--num-epochs', type=int, default=20)
-    argparser.add_argument('--num-hidden', type=int, default=a.n_hidden)
-    argparser.add_argument('--num-layers', type=int, default=a.n_layers)
+    argparser.add_argument('--num-hidden', type=int, default=128)
+    argparser.add_argument('--num-layers', type=int, default=2)
     argparser.add_argument('--num-negs', type=int, default=2)##1
     argparser.add_argument("--seed", type=int, default=200,help="random seed")
-    argparser.add_argument("--aggregator-type", type=str, default='none',help="Aggregator type: mean/gcn/pool/lstm")
+    argparser.add_argument("--aggregator-type", type=str, default='gcn',help="Aggregator type: mean/gcn/pool/lstm")
     argparser.add_argument('--neg-share', default=False, action='store_true',
                            help="sharing neg nodes for positive nodes")
     argparser.add_argument("--file-id", type=str, default='128GCN',#reddit 是16

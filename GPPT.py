@@ -51,12 +51,12 @@ class GraphSAGE(nn.Module):
             self.layers.append(SAGEConv(n_hidden, n_hidden, aggregator_type))
 
         self.prompt=nn.Linear(n_hidden,self.center_num,bias=False)
-        
+
         self.pp = nn.ModuleList()
         for i in range(self.center_num):
             self.pp.append(nn.Linear(2*n_hidden,n_classes,bias=False))
-        
-        
+
+
     def model_to_array(self,args):
         s_dict = torch.load('./data_smc/'+args.dataset+'_model_'+args.file_id+'.pt')#,map_location='cuda:0')
         keys = list(s_dict.keys())
@@ -74,10 +74,13 @@ class GraphSAGE(nn.Module):
             s_dict[name] = arr[indice:indice + length].view(param.shape)
             indice = indice + length
         self.load_state_dict(s_dict)
-    
+
+
     def load_parameters(self, args):
         self.args=args
         self.array_to_model(args)
+
+
     def weigth_init(self,graph,inputs,label,index):
         h = self.dropout(inputs)
         for l, layer in enumerate(self.layers):
@@ -90,27 +93,27 @@ class GraphSAGE(nn.Module):
         graph.update_all(fn.copy_u('h', 'm'), fn.mean('m', 'neighbor'))
         neighbor=graph.ndata['neighbor']
         h=torch.cat((h,neighbor),dim=1)
-        
+
         features=h[index]
         labels=label[index.long()]
         cluster = KMeans(n_clusters=self.center_num,random_state=0).fit(features.detach().cpu())
-        
+
         temp=torch.FloatTensor(cluster.cluster_centers_).cuda()
-        self.prompt.weight.data.copy(temp)
-        
+        self.prompt.weight.data = temp.clone()
 
         p=[]
         for i in range(self.n_classes):
             p.append(features[labels==i].mean(dim=0).view(1,-1))
         temp=torch.cat(p,dim=0)
         for i in range(self.center_num):
-            self.pp[i].weight.data.copy(temp)
-        
-    
+            self.pp[i].weight.data = temp.clone()
+
+
     def update_prompt_weight(self,h):
         cluster = KMeans(n_clusters=self.center_num,random_state=0).fit(h.detach().cpu())
         temp=torch.FloatTensor(cluster.cluster_centers_).cuda()
-        self.prompt.weight.data.copy(temp)
+        self.prompt.weight.data = temp.clone()
+
 
     def get_mul_prompt(self):
         pros=[]
@@ -118,13 +121,14 @@ class GraphSAGE(nn.Module):
             if name.startswith('pp.'):
                 pros.append(param)
         return pros
-        
+
+
     def get_prompt(self):
         for name,param in self.named_parameters():
             if name.startswith('prompt.weight'):
                 pro=param
         return pro
-    
+
     def get_mid_h(self):
         return self.fea
 
@@ -144,7 +148,7 @@ class GraphSAGE(nn.Module):
         h_dst = self.activation(h_dst)
         neighbor=h_dst
         h=torch.cat((h,neighbor),dim=1)
-        self.fea=h 
+        self.fea=h
 
         out=self.prompt(h)
         index=torch.argmax(out, dim=1)
@@ -152,17 +156,17 @@ class GraphSAGE(nn.Module):
         for i in range(self.center_num):
             out[index==i]=self.pp[i](h[index==i])
         return out
-    
+
 def main(args):
     utils.seed_torch(args.seed)
     g,features,labels,in_feats,n_classes,n_edges,train_nid,val_nid,test_nid,device=utils.get_init_info(args)
     sampler = dgl.dataloading.MultiLayerNeighborSampler(args.sample_list)
-    train_dataloader = dgl.dataloading.NodeDataLoader(g,train_nid.int(),sampler,device=device,batch_size=args.batch_size,shuffle=True,drop_last=False,num_workers=0)
+    train_dataloader = dgl.dataloading.DataLoader(g,train_nid.int(),sampler,device=device,batch_size=args.batch_size,shuffle=True,drop_last=False,num_workers=0)
     model = GraphSAGE(in_feats,args.n_hidden,n_classes,args.n_layers,F.relu,args.dropout,args.aggregator_type,args.center_num)
     model.to(device)
     model.load_parameters(args)
     model.weigth_init(g,features,labels,train_nid)
-    
+
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     acc_all=[]
     loss_all=[]
@@ -176,7 +180,7 @@ def main(args):
             lab = mfgs[-1].dstdata['label']
             logits = model(mfgs, inputs)
             loss = F.cross_entropy(logits, lab)
-            
+
             loss_all.append(loss.cpu().data)
             loss=loss+args.lr_c*utils.constraint(device,model.get_mul_prompt())
             optimizer.zero_grad()
@@ -190,31 +194,16 @@ def main(args):
             pd.DataFrame(torch.cat(model.get_mul_prompt(),axis=1).detach().clone().cpu().numpy()).to_csv("./data_p.csv",index=None,header=None)
             model.update_prompt_weight(model.get_mid_h())
         print("Epoch {:03d} | Time(s) {:.4f} | Loss {:.4f} | Accuracy {:.4f} ".format(epoch, time.time() - t0, loss.item(),acc))
-    
+
     pd.DataFrame(acc_all).to_csv('./res/gs_pre_pro_mul_pro_center_c_nei_'+args.dataset+'.csv',index=None,header=None)
     pd.DataFrame(loss_all).to_csv('./res/gs_pre_pro_mul_pro_center_c_nei_'+args.dataset+'_loss.csv',index=None,header=None)
 
 
     acc = utils.evaluate(model, g, test_nid, args.batch_size, device, args.sample_list)
-    
+
     print("Test Accuracy {:.4f}".format(np.mean(acc_all[-10:])))
 
 
 if __name__ == '__main__':
     args=get_args.get_my_args()
     main(args)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    

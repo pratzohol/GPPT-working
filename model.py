@@ -11,28 +11,32 @@ import torch, gc
 class SAGE(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, classes, n_layers, activation, dropout, aggregator_type='gcn'):
         super().__init__()
-        self.init(in_feats, n_hidden, n_classes,classes, n_layers, activation, dropout, aggregator_type)
+        self.init(in_feats, n_hidden, n_classes, classes, n_layers, activation, dropout, aggregator_type)
 
-    def init(self, in_feats, n_hidden, n_classes,classes, n_layers, activation, dropout, aggregator_type):
+    def init(self, in_feats, n_hidden, n_classes, classes, n_layers, activation, dropout, aggregator_type):
         self.n_layers = n_layers
         self.n_hidden = n_hidden
         self.n_classes = n_classes
-        self.classes=classes
+        self.classes= classes
         self.layers = nn.ModuleList()
         if n_layers > 1:
             self.layers.append(dglnn.SAGEConv(in_feats, n_hidden, aggregator_type))
-            for i in range(1, n_layers - 1):
+            #for i in range(1, n_layers - 1):
+            for i in range(n_layers - 1):
                 self.layers.append(dglnn.SAGEConv(n_hidden, n_hidden, aggregator_type))
-            self.layers.append(dglnn.SAGEConv(n_hidden, n_classes, aggregator_type))
+            #self.layers.append(dglnn.SAGEConv(n_hidden, n_classes, aggregator_type))
         else:
             self.layers.append(dglnn.SAGEConv(in_feats, n_classes, aggregator_type))
-        self.fc=nn.Linear(n_hidden,classes)
+        #self.fc=nn.Linear(n_classes, n_classes) # <----------------- added
         self.dropout = nn.Dropout(dropout)
         self.activation = activation
+
     def get_e(self):
         return self.embedding_x
+
     def get_pre(self):
         return self.pre
+
     def forward(self, blocks, x):
         h = self.dropout(x)
         for l, (layer, block) in enumerate(zip(self.layers, blocks)):
@@ -41,11 +45,10 @@ class SAGE(nn.Module):
                 h = self.activation(h)
                 h = self.dropout(h)
         self.embedding_x=h
-        self.pre=self.fc(h)
         return h
-    
+
     def forward_smc(self, g, x):
-        h = h = self.dropout(x)
+        h = self.dropout(x)
         for l, layer in enumerate(self.layers):
             h = layer(g, h)
             if l != len(self.layers) - 1:
@@ -69,9 +72,9 @@ class SAGE(nn.Module):
         # on each layer are of course splitted in batches.
         # TODO: can we standardize this?
         for l, layer in enumerate(self.layers):
-            y = th.zeros(g.num_nodes(), self.n_hidden if l != len(self.layers) - 1 else self.n_classes)
+            y = th.zeros(g.num_nodes(), self.n_hidden) #if l != len(self.layers) - 1 else self.n_classes)
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
-            dataloader = dgl.dataloading.NodeDataLoader(
+            dataloader = dgl.dataloading.DataLoader(
                 g,
                 th.arange(g.num_nodes()).to(g.device),
                 sampler,
@@ -82,15 +85,15 @@ class SAGE(nn.Module):
                 num_workers=num_workers)
 
 
-            for input_nodes, output_nodes, blocks in dataloader:#tqdm.tqdm(dataloader):
+            for input_nodes, output_nodes, blocks in dataloader: #tqdm.tqdm(dataloader):
                 block = blocks[0]
                 block = block.int().to(device)
-                h = x[input_nodes].to(device)
+                h = x.to(device)[input_nodes].to(device)
                 h = layer(block, h)
                 if l != len(self.layers) - 1:
                     h = self.activation(h)
                     h = self.dropout(h)
-                
+
                 y[output_nodes] = h.cpu()
                 #gc.collect()
                 #torch.cuda.empty_cache()

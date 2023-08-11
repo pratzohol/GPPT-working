@@ -4,7 +4,7 @@ def get_my_args():
     parser = argparse.ArgumentParser(description='GraphSAGE')
     register_data_args(parser)
     parser.add_argument("--dropout", type=float, default=0.5, help="dropout probability")
-    parser.add_argument("--lr_c", type=float, default=0.01, help="learning rate")
+    parser.add_argument("--lr_c", type=float, default=0.01, help="lamda for orthogonality")
     parser.add_argument("--seed", type=int, default=100, help="random seed")
     parser.add_argument("--n-hidden", type=int, default=128, help="number of hidden gnn units")
     parser.add_argument("--n-layers", type=int, default=2, help="number of hidden gnn layers")

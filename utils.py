@@ -177,7 +177,7 @@ def constraint(device,prompt):
 
 def seed_torch(seed=1029):
 	random.seed(seed)
-	os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
+	os.environ['PYTHONHASHSEED'] = str(seed)
 	np.random.seed(seed)
 	torch.manual_seed(seed)
 	torch.cuda.manual_seed(seed)
@@ -233,4 +233,3 @@ if __name__ == '__main__':
     for i in range(labels.shape[0]):
         labels[i]=li.index(labels[i])
     print(set(labels.numpy()))
-    #print(info)

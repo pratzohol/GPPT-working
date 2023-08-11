@@ -90,20 +90,22 @@ def run(proc_id, n_gpus, args, devices, data):
     # Unpack data
     device = devices[proc_id]
     if n_gpus > 1:
-        dist_init_method = 'tcp://{master_ip}:{master_port}'.format(
-            master_ip='127.0.0.1', master_port='12345')
+        dist_init_method = 'tcp://{master_ip}:{master_port}'.format(master_ip='127.0.0.1', master_port='12345')
         world_size = n_gpus
         th.distributed.init_process_group(backend="nccl",
                                           init_method=dist_init_method,
                                           world_size=world_size,
                                           rank=proc_id)
+
     train_mask, val_mask, test_mask, n_classes, g = data
     g = dgl.add_self_loop(g)
     nfeat = g.ndata.pop('feat')
     labels = g.ndata.pop('label')
+
     if not args.data_cpu:
         nfeat = nfeat.to(device)
         labels = labels.to(device)
+
     in_feats = nfeat.shape[1]
 
     train_nid = th.LongTensor(np.nonzero(train_mask)).squeeze()
@@ -192,7 +194,7 @@ def run(proc_id, n_gpus, args, devices, data):
                     proc_id, epoch, step, loss.item(), np.mean(iter_pos[3:]), np.mean(iter_neg[3:]), np.mean(iter_d[3:]), np.mean(iter_t[3:]), gpu_mem_alloc))
             tic_step = time.time()
 
-        ############################333
+        ############################
             if step % args.eval_every == 0 and proc_id == 0:
                 eval_acc, test_acc = evaluate(model, g, nfeat, labels, train_nid, val_nid, test_nid, device)
                 print('Eval Acc {:.4f} Test Acc {:.4f}'.format(eval_acc, test_acc))
@@ -200,9 +202,7 @@ def run(proc_id, n_gpus, args, devices, data):
                     best_eval_acc = eval_acc
                     best_test_acc = test_acc
                 print('Best Eval Acc {:.4f} Test Acc {:.4f}'.format(best_eval_acc, best_test_acc))
-                #gc.collect()
-                #torch.cuda.empty_cache()
-        ############################333
+        ############################
         toc = time.time()
         if proc_id == 0:
             print('Epoch Time(s): {:.4f}'.format(toc - tic))
@@ -216,14 +216,13 @@ def run(proc_id, n_gpus, args, devices, data):
     th.save(model.state_dict(), './data_smc/'+args.dataset+'_model_'+args.file_id+'.pt')
     m_state_dict = torch.load('./data_smc/'+args.dataset+'_model_'+args.file_id+'.pt')####
     model.load_state_dict(m_state_dict)####
-    #print("aaa")
+
     pre=smc_evaluate(model, g, nfeat, labels, train_nid, val_nid, test_nid, device)
     res=pre.detach().clone().cpu().data.numpy()
     res=pd.DataFrame(res)
     res.to_csv('./data_smc/'+args.dataset+'_feat_'+args.file_id+'.csv',header=None,index=None)
 
     print("##########\n",compute_acc(pre.detach().clone(),labels, train_nid, val_nid, test_nid))
-    ####
 
     if proc_id == 0:
         print('Avg epoch time: {}'.format(avg / (epoch - 4)))
@@ -273,34 +272,29 @@ if __name__ == '__main__':
                            help="GPU, can be a list of gpus for multi-gpu training,"
                                 " e.g., 0,1,2,3; -1 for CPU")
 
-    argparser.add_argument('--dataset', type=str, default=a.dataset)############
+    argparser.add_argument('--dataset', type=str, default=a.dataset)
     argparser.add_argument('--num-epochs', type=int, default=20)
-    argparser.add_argument('--num-hidden', type=int, default=128)
-    argparser.add_argument('--num-layers', type=int, default=2)
-    argparser.add_argument('--num-negs', type=int, default=2)##1
+    argparser.add_argument('--num-hidden', type=int, default=a.n_hidden)
+    argparser.add_argument('--num-layers', type=int, default=a.n_layers)
+    argparser.add_argument('--num-negs', type=int, default=2)
     argparser.add_argument("--seed", type=int, default=200,help="random seed")
     argparser.add_argument("--aggregator-type", type=str, default='gcn',help="Aggregator type: mean/gcn/pool/lstm")
-    argparser.add_argument('--neg-share', default=False, action='store_true',
-                           help="sharing neg nodes for positive nodes")
-    argparser.add_argument("--file-id", type=str, default='128GCN',#reddit 是16
-                        help="file id means feature shape")
+    argparser.add_argument('--neg-share', default=False, action='store_true', help="sharing neg nodes for positive nodes")
+    argparser.add_argument("--file-id", type=str, default='128GCN', help="file id means feature shape")
     argparser.add_argument('--fan-out', type=str, default='10,25')
-    argparser.add_argument('--batch-size', type=int, default=4096)
+    argparser.add_argument('--batch-size', type=int, default=256)
     argparser.add_argument('--log-every', type=int, default=20)
     argparser.add_argument('--eval-every', type=int, default=2000)
-    argparser.add_argument('--lr', type=float, default=2e-4)
+    argparser.add_argument('--lr', type=float, default=2e-3)
     argparser.add_argument('--dropout', type=float, default=0.5)
     argparser.add_argument('--half', type=bool, default=False)
     argparser.add_argument('--mask_rate', type=float, default=0)
-    argparser.add_argument('--num-workers', type=int, default=0,
-                           help="Number of sampling processes. Use 0 for no extra process.")
-    argparser.add_argument('--sample-gpu', action='store_true',
-                           help="Perform the sampling process on the GPU. Must have 0 workers.")
-    argparser.add_argument('--data-cpu', action='store_true',
-                           help="By default the script puts all node features and labels "
-                                "on GPU when using it to save time for data copy. This may "
-                                "be undesired if they cannot fit in GPU memory at once. "
-                                "This flag disables that.")
+    argparser.add_argument('--num-workers', type=int, default=0, help="Number of sampling processes. Use 0 for no extra process.")
+    argparser.add_argument('--sample-gpu', action='store_true', help="Perform the sampling process on the GPU. Must have 0 workers.")
+    argparser.add_argument('--data-cpu', action='store_true', help="By default the script puts all node features and labels "
+                                                                    "on GPU when using it to save time for data copy. This may "
+                                                                    "be undesired if they cannot fit in GPU memory at once. "
+                                                                    "This flag disables that.")
     args = argparser.parse_args()
 
     devices = list(map(int, args.gpu.split(',')))

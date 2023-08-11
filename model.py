@@ -19,14 +19,14 @@ class SAGE(nn.Module):
         self.n_classes = n_classes
         self.classes= classes
         self.layers = nn.ModuleList()
+
         if n_layers > 1:
             self.layers.append(dglnn.SAGEConv(in_feats, n_hidden, aggregator_type))
-            #for i in range(1, n_layers - 1):
             for i in range(n_layers - 1):
                 self.layers.append(dglnn.SAGEConv(n_hidden, n_hidden, aggregator_type))
-            #self.layers.append(dglnn.SAGEConv(n_hidden, n_classes, aggregator_type))
         else:
             self.layers.append(dglnn.SAGEConv(in_feats, n_classes, aggregator_type))
+
         #self.fc=nn.Linear(n_classes, n_classes) # <----------------- added
         self.dropout = nn.Dropout(dropout)
         self.activation = activation
@@ -44,7 +44,8 @@ class SAGE(nn.Module):
             if l != len(self.layers) - 1:
                 h = self.activation(h)
                 h = self.dropout(h)
-        self.embedding_x=h
+
+        self.embedding_x = h
         return h
 
     def forward_smc(self, g, x):
@@ -71,8 +72,9 @@ class SAGE(nn.Module):
         # Therefore, we compute the representation of all nodes layer by layer.  The nodes
         # on each layer are of course splitted in batches.
         # TODO: can we standardize this?
+
         for l, layer in enumerate(self.layers):
-            y = th.zeros(g.num_nodes(), self.n_hidden) #if l != len(self.layers) - 1 else self.n_classes)
+            y = th.zeros(g.num_nodes(), self.n_hidden)
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
             dataloader = dgl.dataloading.DataLoader(
                 g,
@@ -85,18 +87,18 @@ class SAGE(nn.Module):
                 num_workers=num_workers)
 
 
-            for input_nodes, output_nodes, blocks in dataloader: #tqdm.tqdm(dataloader):
+            for input_nodes, output_nodes, blocks in dataloader:
                 block = blocks[0]
                 block = block.int().to(device)
+
                 h = x.to(device)[input_nodes].to(device)
                 h = layer(block, h)
+
                 if l != len(self.layers) - 1:
                     h = self.activation(h)
                     h = self.dropout(h)
 
                 y[output_nodes] = h.cpu()
-                #gc.collect()
-                #torch.cuda.empty_cache()
 
             x = y
         return y
@@ -107,10 +109,13 @@ def compute_acc_unsupervised(emb, labels, train_nids, val_nids, test_nids):
     """
     emb = emb.cpu().numpy()
     labels = labels.cpu().numpy()
+
     train_nids = train_nids.cpu().numpy()
     train_labels = labels[train_nids]
+
     val_nids = val_nids.cpu().numpy()
     val_labels = labels[val_nids]
+
     test_nids = test_nids.cpu().numpy()
     test_labels = labels[test_nids]
 

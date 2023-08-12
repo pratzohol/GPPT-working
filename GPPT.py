@@ -43,11 +43,11 @@ class GraphSAGE(nn.Module):
         for _ in range(n_layers - 1):
             self.layers.append(SAGEConv(n_hidden, n_hidden, aggregator_type)) # hidden layers
 
-        self.prompt = nn.Linear(n_hidden, self.center_num, bias=False)
+        self.prompt = nn.Linear(2*n_hidden, self.center_num, bias=False) # weight = M x 2*dim(h) where h = embedding
         self.pp     = nn.ModuleList()
 
         for _ in range(self.center_num):
-            self.pp.append(nn.Linear(2*n_hidden, n_classes, bias=False))
+            self.pp.append(nn.Linear(2*n_hidden, n_classes, bias=False)) # weight = C x 2*dim(h) where h = embedding and C = number of classes
 
 
     def model_to_array(self,args):
@@ -78,7 +78,7 @@ class GraphSAGE(nn.Module):
         self.array_to_model(args)
 
 
-    def weigth_init(self, graph, inputs, label, index):
+    def weight_init(self, graph, inputs, label, index):
         h = self.dropout(inputs)
 
         for l, layer in enumerate(self.layers):
@@ -90,21 +90,23 @@ class GraphSAGE(nn.Module):
         h = self.activation(h)
 
         graph.ndata['h'] = h
-        graph.update_all(fn.copy_u('h', 'm'), fn.mean('m', 'neighbor'))
+        graph.update_all(fn.copy_u('h', 'm'), fn.mean('m', 'neighbor')) # updates the node embeddings by aggregating information from their neighboring nodes
         neighbor = graph.ndata['neighbor']
-        h = torch.cat((h, neighbor), dim=1)
+        h = torch.cat((h, neighbor), dim=1) # concatenate own embedding with the aggregated neighbor embeddings
 
         features = h[index]
         labels = label[index.long()]
-        cluster = KMeans(n_clusters=self.center_num, random_state=0).fit(features.detach().cpu())
+        cluster = KMeans(n_clusters=self.center_num, random_state=0).fit(features.detach().cpu()) # kMeans cluster on the node embeddings
 
-        temp = torch.FloatTensor(cluster.cluster_centers_).cuda()
+        temp = torch.FloatTensor(cluster.cluster_centers_).cuda() # M x 2*dim(h) where h = embedding
         self.prompt.weight.data = temp.clone()
 
         p=[]
         for i in range(self.n_classes):
             p.append(features[labels==i].mean(dim=0).view(1,-1))
-        temp=torch.cat(p,dim=0)
+
+        temp=torch.cat(p,dim=0) # C x 2*dim(h) where h = embedding and C = number of classes
+
         for i in range(self.center_num):
             self.pp[i].weight.data = temp.clone()
 
@@ -129,8 +131,10 @@ class GraphSAGE(nn.Module):
                 pro=param
         return pro
 
+
     def get_mid_h(self):
-        return self.fea
+        return self.fea # N x 2*dim(h)
+
 
     def forward(self, graph, inputs):
         if self.dropout==False:
@@ -151,13 +155,13 @@ class GraphSAGE(nn.Module):
         h_dst = self.activation(h_dst)
         neighbor = h_dst
         h = torch.cat((h,neighbor), dim=1)
-        self.fea = h
+        self.fea = h # N x 2*dim(h)
 
-        out = self.prompt(h)
-        index = torch.argmax(out, dim=1)
-        out = torch.FloatTensor(h.shape[0], self.n_classes).cuda()
+        out = self.prompt(h) # H = N x 2*dim(h) and W = self.prompt.weight = M x 2*dim(h) and we are doing HW^T where H = N x 2*dim(h)
+        index = torch.argmax(out, dim=1) # Calculating in which cluster each node belongs to
+        out = torch.FloatTensor(h.shape[0], self.n_classes).cuda() # N x C where N = number of nodes and C = number of classes
         for i in range(self.center_num):
-            out[index==i] = self.pp[i](h[index==i])
+            out[index==i] = self.pp[i](h[index==i]) # W = self.pp[i].weight = C x 2*dim(h) and we are doing HW^T where H = n_i x 2*dim(h)
         return out
 
 def main(args):
@@ -170,7 +174,7 @@ def main(args):
     model = GraphSAGE(in_feats, args.n_hidden, n_classes, args.n_layers, F.relu, args.dropout, args.aggregator_type, args.center_num)
     model.to(device)
     model.load_parameters(args)
-    model.weigth_init(g, features, labels, train_nid)
+    model.weight_init(g, features, labels, train_nid)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     acc_all=[]
@@ -205,8 +209,8 @@ def main(args):
             model.update_prompt_weight(model.get_mid_h())
         print("Epoch {:03d} | Time(s) {:.4f} | Loss {:.4f} | Accuracy {:.4f} ".format(epoch, time.time() - t0, loss.item(),acc))
 
-    pd.DataFrame(acc_all).to_csv('./res/gs_pre_pro_mul_pro_center_c_nei_'+args.dataset+'.csv',index=None,header=None)
-    pd.DataFrame(loss_all).to_csv('./res/gs_pre_pro_mul_pro_center_c_nei_'+args.dataset+'_loss.csv',index=None,header=None)
+    pd.DataFrame(acc_all).to_csv('./res/gs_pre_pro_mul_pro_center_c_nei_' + args.dataset + '.csv', index=None, header=None)
+    pd.DataFrame(loss_all).to_csv('./res/gs_pre_pro_mul_pro_center_c_nei_' + args.dataset + '_loss.csv', index=None, header=None)
 
 
     acc = utils.evaluate(model, g, test_nid, args.batch_size, device, args.sample_list)

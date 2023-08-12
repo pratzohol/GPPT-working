@@ -165,14 +165,14 @@ def evaluate(model, graph, nid, batch_size, device,sample_list):
     return accuracy
 
 
-def constraint(device,prompt):
-    if isinstance(prompt,list):
-        sum=0
+def constraint(device, prompt):
+    if isinstance(prompt, list):
+        sum = 0
         for p in prompt:
-            sum=sum+torch.norm(torch.mm(p,p.T)-torch.eye(p.shape[0]).to(device))
-        return sum/len(prompt)
+            sum += torch.norm(torch.mm(p, p.T) - torch.eye(p.shape[0]).to(device))
+        return sum / len(prompt)
     else:
-        return torch.norm(torch.mm(prompt,prompt.T)-torch.eye(prompt.shape[0]).to(device))
+        return torch.norm(torch.mm(prompt, prompt.T) - torch.eye(prompt.shape[0]).to(device))
 
 
 def seed_torch(seed=1029):

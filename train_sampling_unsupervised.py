@@ -92,10 +92,7 @@ def run(proc_id, n_gpus, args, devices, data):
     if n_gpus > 1:
         dist_init_method = 'tcp://{master_ip}:{master_port}'.format(master_ip='127.0.0.1', master_port='12345')
         world_size = n_gpus
-        th.distributed.init_process_group(backend="nccl",
-                                          init_method=dist_init_method,
-                                          world_size=world_size,
-                                          rank=proc_id)
+        th.distributed.init_process_group(backend="nccl", init_method=dist_init_method, world_size=world_size, rank=proc_id)
 
     train_mask, val_mask, test_mask, n_classes, g = data
     g = dgl.add_self_loop(g)
@@ -221,7 +218,7 @@ def run(proc_id, n_gpus, args, devices, data):
     res=pd.DataFrame(res)
     res.to_csv('./data_smc/' + args.dataset + '_feat_' + args.file_id + '.csv', header=None, index=None)
 
-    print("##########\n",compute_acc(pre.detach().clone(),labels, train_nid, val_nid, test_nid))
+    print("##########\n",compute_acc(pre.detach().clone(), labels, train_nid, val_nid, test_nid))
 
     if proc_id == 0:
         print('Avg epoch time: {}'.format(avg / (epoch - 4)))

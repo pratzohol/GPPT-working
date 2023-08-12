@@ -27,7 +27,6 @@ class SAGE(nn.Module):
         else:
             self.layers.append(dglnn.SAGEConv(in_feats, n_classes, aggregator_type))
 
-        #self.fc=nn.Linear(n_classes, n_classes) # <----------------- added
         self.dropout = nn.Dropout(dropout)
         self.activation = activation
 

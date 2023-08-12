@@ -36,6 +36,6 @@ The updated code uses the current following dependencies:
 
 - For node classification task, run the following command: `python GPPT.py`
 - First, load the parameters of pre-trained model.
-- In the paper, they said for structure token 1-hop neighbour information will be aggregated using attention function. But, here they simply used mean function to aggregate the information and then concatenated the neighbour information with node embedding.
+- In the paper, they said for structure token 1-hop neighbour information will be aggregated using attention function. But, here they simply used mean function to aggregate the information and then concatenated the neighbour information embedding with node embedding of target node.
 - Initialization of task token embeddings is same for all clusters. They used center node embedding of each class to initialize the task token embedding.
 - The link prediction is done by finding cosine similarity between node embeddings. Thus, parameters $\phi$ of pre-trained projection head are not present. Only the parameters $\theta$ of backbone architecture and task token embeddings $E_1, \cdots, E_M$ are updated.

@@ -161,8 +161,9 @@ class GraphSAGE(nn.Module):
         index = torch.argmax(out, dim=1) # Calculating in which cluster each node belongs to
         out = torch.FloatTensor(h.shape[0], self.n_classes).cuda() # N x C where N = number of nodes and C = number of classes
         for i in range(self.center_num):
-            out[index==i] = self.pp[i](h[index==i]) # W = self.pp[i].weight = C x 2*dim(h) and we are doing HW^T where H = n_i x 2*dim(h)
+            out[index==i] = self.pp[i](h[index==i]) # W = self.pp[i].weight = C x 2*dim(h) and we are doing HW^T where H = N x 2*dim(h)
         return out
+
 
 def main(args):
     utils.seed_torch(args.seed)
